@@ -6,6 +6,22 @@ import requests
 import sseclient
 import uuid # For generating unique session hashes
 import io  # For handling in-memory file operations
+from pydantic import BaseModel
+from typing import Optional
+
+
+class UserRecord(BaseModel):
+    path: str
+    recordUrl: str
+    originalName: str
+    size: Optional[int] = None
+
+class AudioRequest(BaseModel):
+    prompt: str
+    language: str
+    normalize_vi_text: bool
+    user_record: UserRecord
+
 
 app = FastAPI()
 
@@ -41,24 +57,24 @@ def synthesize_text(prompt: str = Body(...), language: str = Body(...), audio_fi
     return result
 
 @app.post("/process_audio")
-def process_audio(prompt: str = Body(...), language: str = Body(...), normalize_vi_text: bool = Body(...)):
+def process_audio(request: AudioRequest):
     # Step 1: Make the POST request
     post_url = "https://thinhlpg-vixtts-demo.hf.space/queue/join?__theme=system"
     session_hash = str(uuid.uuid4())  # Generate a unique session hash
     post_data = {
         "data": [
-            prompt,
-            language,
+            request.prompt,
+            request.language,
             {
-                "path": "/tmp/gradio/01b4edbba4aec9b7bba6fb7e7d5170287b4739f4/nu-luu-loat.wav",
-                "url": "https://thinhlpg-vixtts-demo.hf.space/file=/tmp/gradio/01b4edbba4aec9b7bba6fb7e7d5170287b4739f4/nu-luu-loat.wav",
-                "orig_name": "nu-luu-loat.wav",
-                "size": None,
+                "path": request.user_record.path,
+                "url": request.user_record.recordUrl,
+                "orig_name": request.user_record.originalName,
+                "size": request.user_record.size,
                 "is_stream": False,
                 "mime_type": None,
                 "meta": {"_type": "gradio.FileData"}
             },
-            normalize_vi_text
+            request.normalize_vi_text
         ],
         "event_data": None,
         "fn_index": 0,
@@ -91,12 +107,12 @@ def process_audio(prompt: str = Body(...), language: str = Body(...), normalize_
             # Stop the SSE stream
             break  # Exit the loop after receiving the "process_completed" message
 
-    response = requests.get(output_url)
-    if response.status_code == 200:
-        wav_file = io.BytesIO(response.content)  # Load the file into memory
-        wav_file.seek(0)  # Reset the file pointer to the beginning
-    else:
-        return {"error": "Failed to fetch the audio file", "details": response.text}
+    # response = requests.get(output_url)
+    # if response.status_code == 200:
+    #     wav_file = io.BytesIO(response.content)  # Load the file into memory
+    #     wav_file.seek(0)  # Reset the file pointer to the beginning
+    # else:
+    #     return {"error": "Failed to fetch the audio file", "details": response.text}
 
     
-    return StreamingResponse(wav_file, media_type="audio/wav")
+    return output_url
